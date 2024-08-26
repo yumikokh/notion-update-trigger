@@ -18,18 +18,16 @@ export async function GET(_request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const data = await request.json();
-  const text = data.text;
-
-  if (!text) {
-    return new Response(
-      JSON.stringify({ status: "error", message: "No text provided" })
-    );
-  }
+  const { text, embed, video } = data as {
+    text?: string;
+    embed?: string;
+    video?: string;
+  };
 
   const latestPage = await getLatestPageFromDatabase();
   const { id: latestPageId } = latestPage;
 
-  const result = await appendTextToPage(latestPageId, text);
+  const result = await appendTextToPage(latestPageId, { text, embed, video });
   return new Response(JSON.stringify({ status: "success", result: result }));
 }
 
@@ -56,7 +54,39 @@ const getLatestPageFromDatabase = async (): Promise<PageObjectResponse> => {
   return latestPage as PageObjectResponse;
 };
 
-const appendTextToPage = async (pageId: string, text = "test") => {
+const appendTextToPage = async (
+  pageId: string,
+  opts: { text?: string; embed?: string; video?: string }
+) => {
+  const rich_text = [];
+  const children = [];
+  if (opts.text) {
+    rich_text.push({
+      type: "text",
+      text: {
+        content: opts.text,
+      },
+    } as const);
+  }
+  if (opts.embed) {
+    children.push({
+      type: "embed", // APIからの埋め込みはVimeoだけがサポートされている see: https://developers.notion.com/reference/block#embed
+      embed: {
+        url: opts.embed,
+      },
+    } as const);
+  }
+  if (opts.video) {
+    children.push({
+      type: "video",
+      video: {
+        type: "external",
+        external: {
+          url: opts.video,
+        },
+      },
+    } as const);
+  }
   const response = await notion.blocks.children.append({
     block_id: pageId,
     children: [
@@ -64,14 +94,8 @@ const appendTextToPage = async (pageId: string, text = "test") => {
         object: "block",
         type: "bulleted_list_item",
         bulleted_list_item: {
-          rich_text: [
-            {
-              type: "text",
-              text: {
-                content: text,
-              },
-            },
-          ],
+          rich_text,
+          children,
         },
       },
     ],

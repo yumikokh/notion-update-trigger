@@ -1,7 +1,6 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export function GET(_: NextApiRequest, _res: NextApiResponse) {
+export function GET(_: NextRequest, _res: NextResponse) {
   return NextResponse.json(
     { error: "Basic Auth Required" },
     {

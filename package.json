@@ -1,5 +1,5 @@
 {
-  "name": "notion-webhook",
+  "name": "notion-update-trigger",
   "version": "0.1.0",
   "private": true,
   "scripts": {

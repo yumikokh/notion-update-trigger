@@ -1,4 +1,4 @@
-# notion-webhook
+# notion-update-trigger
 
 ## Features
 

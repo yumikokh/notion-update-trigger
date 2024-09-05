@@ -70,7 +70,7 @@ const appendTextToPage = async (
   }
   if (opts.embed) {
     children.push({
-      type: "embed", // APIからの埋め込みはVimeoだけがサポートされている see: https://developers.notion.com/reference/block#embed
+      type: "embed", // ✗Spotify, ◯ Twitter,Vimeo see: https://developers.notion.com/reference/block#embed
       embed: {
         url: opts.embed,
       },
@@ -82,7 +82,7 @@ const appendTextToPage = async (
       video: {
         type: "external",
         external: {
-          url: opts.video,
+          url: opts.video, // ◯ Youtube
         },
       },
     } as const);

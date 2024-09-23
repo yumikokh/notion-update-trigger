@@ -32,11 +32,11 @@ export async function PUT(request: NextRequest) {
 }
 
 const getLatestPageFromDatabase = async (): Promise<PageObjectResponse> => {
-  if (!process.env.NOTION_DATABASE_ID) {
+  if (!process.env.NOTION_JOURNAL_DATABASE_ID) {
     throw new Error("No database ID provided");
   }
   const response = await notion.databases.query({
-    database_id: process.env.NOTION_DATABASE_ID,
+    database_id: process.env.NOTION_JOURNAL_DATABASE_ID,
     page_size: 1,
     sorts: [
       {

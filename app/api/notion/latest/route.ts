@@ -7,6 +7,20 @@ import { NextRequest } from "next/server";
 
 const notion = new Client({ auth: process.env.NOTION_API_TOKEN });
 
+type Input = {
+  text?: string;
+  embed?: string;
+  video?: string;
+  link?: {
+    title: string;
+    url: string;
+  };
+  bookmark?: {
+    url: string;
+    caption?: string;
+  };
+};
+
 export async function GET(_request: NextRequest) {
   const latestPage = await getLatestPageFromDatabase();
   const { url: latestPageUrl } = latestPage;
@@ -18,16 +32,18 @@ export async function GET(_request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const data = await request.json();
-  const { text, embed, video } = data as {
-    text?: string;
-    embed?: string;
-    video?: string;
-  };
+  const { text, embed, video, link, bookmark } = data as Input;
 
   const latestPage = await getLatestPageFromDatabase();
   const { id: latestPageId } = latestPage;
 
-  const result = await appendTextToPage(latestPageId, { text, embed, video });
+  const result = await appendTextToPage(latestPageId, {
+    text,
+    embed,
+    video,
+    link,
+    bookmark,
+  });
   return new Response(JSON.stringify({ status: "success", result: result }));
 }
 
@@ -54,10 +70,7 @@ const getLatestPageFromDatabase = async (): Promise<PageObjectResponse> => {
   return latestPage as PageObjectResponse;
 };
 
-const appendTextToPage = async (
-  pageId: string,
-  opts: { text?: string; embed?: string; video?: string }
-) => {
+const appendTextToPage = async (pageId: string, opts: Input) => {
   const rich_text = [];
   const children = [];
   if (opts.text) {
@@ -67,6 +80,33 @@ const appendTextToPage = async (
         content: opts.text,
       },
     } as const);
+  }
+  if (opts.link) {
+    rich_text.push({
+      type: "text",
+      text: {
+        content: opts.link.title,
+        link: {
+          url: opts.link.url,
+        },
+      },
+    } as const);
+  }
+  if (opts.bookmark) {
+    children.push({
+      type: "bookmark" as const,
+      bookmark: {
+        url: opts.bookmark.url,
+        caption: [
+          {
+            type: "text" as const,
+            text: {
+              content: opts.bookmark.caption || "",
+            },
+          },
+        ],
+      },
+    });
   }
   if (opts.embed) {
     children.push({

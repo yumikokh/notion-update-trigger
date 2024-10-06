@@ -11,10 +11,6 @@ type Input = {
   text?: string;
   embed?: string;
   video?: string;
-  link?: {
-    title: string;
-    url: string;
-  };
   bookmark?: {
     url: string;
     caption?: string;
@@ -32,7 +28,7 @@ export async function GET(_request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const data = await request.json();
-  const { text, embed, video, link, bookmark } = data as Input;
+  const { text, embed, video, bookmark } = data as Input;
 
   const latestPage = await getLatestPageFromDatabase();
   const { id: latestPageId } = latestPage;
@@ -41,7 +37,6 @@ export async function PUT(request: NextRequest) {
     text,
     embed,
     video,
-    link,
     bookmark,
   });
   return new Response(JSON.stringify({ status: "success", result: result }));
@@ -71,27 +66,41 @@ const getLatestPageFromDatabase = async (): Promise<PageObjectResponse> => {
 };
 
 const appendTextToPage = async (pageId: string, opts: Input) => {
-  const rich_text = [];
+  const rich_text: {
+    type: "text";
+    text: { content: string; link: { url: string } } | { content: string };
+  }[] = [];
   const children = [];
+
   if (opts.text) {
-    rich_text.push({
-      type: "text",
+    // url部分（複数可）だけ取り出す
+    const urls = opts.text.match(/https?:\/\/\S+/g) || [];
+    // url部分をダミーリンクに変換
+    const text = opts.text.replace(/https?:\/\/\S+/g, "<URL>");
+    const link = urls.map((url) => ({
+      type: "text" as const,
       text: {
-        content: opts.text,
-      },
-    } as const);
-  }
-  if (opts.link) {
-    rich_text.push({
-      type: "text",
-      text: {
-        content: opts.link.title,
+        content: url,
         link: {
-          url: opts.link.url,
+          url,
         },
       },
-    } as const);
+    }));
+    // テキストとリンクを結合
+    const texts = text.split("<URL>");
+    texts.forEach((text, index) => {
+      rich_text.push({
+        type: "text" as const,
+        text: {
+          content: text,
+        },
+      });
+      if (link[index]) {
+        rich_text.push(link[index]);
+      }
+    });
   }
+
   if (opts.bookmark) {
     children.push({
       type: "bookmark" as const,

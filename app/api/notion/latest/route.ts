@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { Client } from "@notionhq/client";
 import { PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 import { NextRequest } from "next/server";
+import emoji from "emoji-datasource-apple";
 
 const notion = new Client({ auth: process.env.NOTION_API_TOKEN });
 
@@ -73,10 +74,20 @@ const appendTextToPage = async (pageId: string, opts: Input) => {
   const children = [];
 
   if (opts.text) {
+    // emojiを変換
+    const emojiRegex = /:([a-z0-9_+]+):/g;
+    const textWithEmoji = opts.text.replace(emojiRegex, (match, p1) => {
+      const emojiData = emoji.find((e) => e.short_name === p1);
+      if (emojiData) {
+        return String.fromCodePoint(parseInt(emojiData.unified, 16));
+      }
+      return match; // 見つからない場合は :emoji: のまま返す
+    });
+
     // url部分（複数可）だけ取り出す
-    const urls = opts.text.match(/https?:\/\/\S+/g) || [];
+    const urls = textWithEmoji.match(/https?:\/\/\S+/g) || [];
     // url部分をダミーリンクに変換
-    const text = opts.text.replace(/https?:\/\/\S+/g, "<URL>");
+    const text = textWithEmoji.replace(/https?:\/\/\S+/g, "<URL>");
     const link = urls.map((url) => ({
       type: "text" as const,
       text: {

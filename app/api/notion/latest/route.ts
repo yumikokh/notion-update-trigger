@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 import { Client } from "@notionhq/client";
 import { PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 import { NextRequest } from "next/server";
-import emoji from "emoji-datasource-apple";
+import emoji from "emoji-datasource";
 
 const notion = new Client({ auth: process.env.NOTION_API_TOKEN });
 

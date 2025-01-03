@@ -36,6 +36,6 @@ $ git push
 ### env
 
 ```bash
-$ vercel add ${KEY} # vercelの環境変数に設定
+$ vercel env add ${KEY} # vercelの環境変数に設定
 $ vercel env pull # .env.local に反映される
 ```

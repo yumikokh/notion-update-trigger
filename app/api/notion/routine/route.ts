@@ -25,6 +25,18 @@ export async function PUT(request: NextRequest) {
   return new Response(JSON.stringify({ status: "success", result: count }));
 }
 
+const thisMonth = new Date(
+  new Date().getFullYear(),
+  new Date().getMonth(),
+  1
+).toISOString();
+
+const nextMonth = new Date(
+  new Date().getFullYear(),
+  new Date().getMonth() + 1,
+  1
+).toISOString();
+
 const countCheckedRoutines = async (property: string): Promise<number> => {
   if (!process.env.NOTION_JOURNAL_DATABASE_ID) {
     throw new Error("No database ID provided");
@@ -37,21 +49,13 @@ const countCheckedRoutines = async (property: string): Promise<number> => {
         {
           property: "Date",
           date: {
-            on_or_after: new Date(
-              new Date().getFullYear(),
-              new Date().getMonth(),
-              1
-            ).toISOString(),
+            on_or_after: thisMonth,
           },
         },
         {
           property: "Date",
           date: {
-            before: new Date(
-              new Date().getFullYear(),
-              new Date().getMonth() + 1,
-              1
-            ).toISOString(),
+            before: nextMonth,
           },
         },
         {
@@ -90,21 +94,13 @@ const updateProjectProperty = async (title: string, value: number) => {
         {
           property: "Date",
           date: {
-            on_or_after: new Date(
-              new Date().getFullYear(),
-              new Date().getMonth(),
-              1
-            ).toISOString(),
+            on_or_after: thisMonth,
           },
         },
         {
           property: "Date",
           date: {
-            before: new Date(
-              new Date().getFullYear(),
-              new Date().getMonth() + 1,
-              1
-            ).toISOString(),
+            before: nextMonth,
           },
         },
         {

@@ -125,6 +125,120 @@ export type Input = {
   };
 };
 
+import { ProjectSummary, formatDuration, formatTime } from "../toggl/client";
+
+/**
+ * プロジェクト名からNotionのProjectページを検索する
+ */
+const findProjectPages = async (
+  projectNames: string[]
+): Promise<Map<string, string>> => {
+  if (!process.env.NOTION_PROJECT_DATABASE_ID) {
+    return new Map();
+  }
+
+  const result = new Map<string, string>();
+
+  await Promise.all(
+    projectNames.map(async (name) => {
+      if (name === "No Project" || name === "Unknown") return;
+      try {
+        const response = await notion.databases.query({
+          database_id: process.env.NOTION_PROJECT_DATABASE_ID!,
+          filter: {
+            property: "Project Name",
+            title: { equals: name },
+          },
+          page_size: 1,
+        });
+        if (response.results.length > 0) {
+          result.set(name, response.results[0].id);
+        }
+      } catch {
+        // ignore
+      }
+    })
+  );
+
+  return result;
+};
+
+/**
+ * Togglサマリーをページに追記する
+ */
+export const appendTogglSummaryToPage = async (
+  pageId: string,
+  summaries: ProjectSummary[]
+) => {
+  const totalSeconds = summaries.reduce((sum, s) => sum + s.totalSeconds, 0);
+
+  // プロジェクト名からNotionページを検索
+  const projectPageMap = await findProjectPages(
+    summaries.map((s) => s.projectName)
+  );
+
+  const children: any[] = [
+    {
+      object: "block",
+      type: "heading_3",
+      heading_3: {
+        rich_text: [
+          { type: "text", text: { content: `⏱ Toggl (${formatDuration(totalSeconds)})` } },
+        ],
+      },
+    },
+  ];
+
+  for (const summary of summaries) {
+    const notionPageId = projectPageMap.get(summary.projectName);
+    const projectRichText: any[] = notionPageId
+      ? [
+          { type: "mention", mention: { type: "page", page: { id: notionPageId } } },
+          { type: "text", text: { content: `: ${formatDuration(summary.totalSeconds)}` } },
+        ]
+      : [
+          {
+            type: "text",
+            text: {
+              content: `${summary.projectName}: ${formatDuration(summary.totalSeconds)}`,
+            },
+          },
+        ];
+
+    children.push({
+      object: "block",
+      type: "bulleted_list_item",
+      bulleted_list_item: {
+        rich_text: projectRichText,
+        children: summary.entries.map((entry) => {
+          const timeRange = entry.stop
+            ? `${formatTime(entry.start)}-${formatTime(entry.stop)}`
+            : `${formatTime(entry.start)}-`;
+          return {
+            object: "block",
+            type: "bulleted_list_item",
+            bulleted_list_item: {
+              rich_text: [
+                {
+                  type: "text",
+                  text: {
+                    content: `${entry.description} ${timeRange} (${formatDuration(entry.seconds)})`,
+                  },
+                },
+              ],
+            },
+          };
+        }),
+      },
+    });
+  }
+
+  return notion.blocks.children.append({
+    block_id: pageId,
+    children,
+  });
+};
+
 export const appendTextToPage = async (pageId: string, opts: Input) => {
   const rich_text: {
     type: "text";

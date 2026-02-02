@@ -177,61 +177,77 @@ export const appendTogglSummaryToPage = async (
     summaries.map((s) => s.projectName)
   );
 
+  // 全体の開始・終了時間を算出
+  const allEntries = summaries.flatMap((s) => s.entries);
+  const starts = allEntries.map((e) => new Date(e.start).getTime());
+  const stops = allEntries.filter((e) => e.stop).map((e) => new Date(e.stop!).getTime());
+  const overallStart = starts.length > 0 ? formatTime(new Date(Math.min(...starts)).toISOString()) : "";
+  const overallEnd = stops.length > 0 ? formatTime(new Date(Math.max(...stops)).toISOString()) : "";
+  const timeRange = overallStart && overallEnd ? ` ${overallStart}-${overallEnd}` : "";
+
+  // テーブル行を作成
+  const headerRow = {
+    object: "block",
+    type: "table_row",
+    table_row: {
+      cells: [
+        [{ type: "text", text: { content: "Project" } }],
+        [{ type: "text", text: { content: "Time" } }],
+        [{ type: "text", text: { content: "Details" } }],
+      ],
+    },
+  };
+
+  const dataRows = summaries.map((summary) => {
+    const notionPageId = projectPageMap.get(summary.projectName);
+    const projectCell: any[] = notionPageId
+      ? [{ type: "mention", mention: { type: "page", page: { id: notionPageId } } }]
+      : [{ type: "text", text: { content: summary.projectName } }];
+
+    // 同じdescriptionのエントリをマージ
+    const mergedEntries = new Map<string, number>();
+    for (const entry of summary.entries) {
+      const key = entry.description;
+      mergedEntries.set(key, (mergedEntries.get(key) ?? 0) + entry.seconds);
+    }
+    const details = Array.from(mergedEntries.entries())
+      .map(([desc, secs]) => `• ${desc} (${formatDuration(secs)})`)
+      .join("\n");
+
+    return {
+      object: "block",
+      type: "table_row",
+      table_row: {
+        cells: [
+          projectCell,
+          [{ type: "text", text: { content: formatDuration(summary.totalSeconds) } }],
+          [{ type: "text", text: { content: details } }],
+        ],
+      },
+    };
+  });
+
   const children: any[] = [
     {
       object: "block",
       type: "heading_3",
       heading_3: {
         rich_text: [
-          { type: "text", text: { content: `⏱ Toggl (${formatDuration(totalSeconds)})` } },
+          { type: "text", text: { content: `⏱ Toggl (${formatDuration(totalSeconds)})${timeRange}` } },
         ],
       },
     },
-  ];
-
-  for (const summary of summaries) {
-    const notionPageId = projectPageMap.get(summary.projectName);
-    const projectRichText: any[] = notionPageId
-      ? [
-          { type: "mention", mention: { type: "page", page: { id: notionPageId } } },
-          { type: "text", text: { content: `: ${formatDuration(summary.totalSeconds)}` } },
-        ]
-      : [
-          {
-            type: "text",
-            text: {
-              content: `${summary.projectName}: ${formatDuration(summary.totalSeconds)}`,
-            },
-          },
-        ];
-
-    children.push({
+    {
       object: "block",
-      type: "bulleted_list_item",
-      bulleted_list_item: {
-        rich_text: projectRichText,
-        children: summary.entries.map((entry) => {
-          const timeRange = entry.stop
-            ? `${formatTime(entry.start)}-${formatTime(entry.stop)}`
-            : `${formatTime(entry.start)}-`;
-          return {
-            object: "block",
-            type: "bulleted_list_item",
-            bulleted_list_item: {
-              rich_text: [
-                {
-                  type: "text",
-                  text: {
-                    content: `${entry.description} ${timeRange} (${formatDuration(entry.seconds)})`,
-                  },
-                },
-              ],
-            },
-          };
-        }),
+      type: "table",
+      table: {
+        table_width: 3,
+        has_column_header: true,
+        has_row_header: false,
+        children: [headerRow, ...dataRows],
       },
-    });
-  }
+    },
+  ];
 
   return notion.blocks.children.append({
     block_id: pageId,

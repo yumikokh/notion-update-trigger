@@ -46,16 +46,19 @@ export type ProjectSummary = {
  * 当日のタイムエントリを取得する
  */
 export const getTodayTimeEntries = async (): Promise<TogglTimeEntry[]> => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const start = today.toISOString();
+  // JST (UTC+9) で「今日」を計算する
+  const nowUtc = new Date();
+  const jstOffset = 9 * 60 * 60 * 1000;
+  const nowJst = new Date(nowUtc.getTime() + jstOffset);
+  const yyyy = nowJst.getUTCFullYear();
+  const mm = String(nowJst.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(nowJst.getUTCDate()).padStart(2, "0");
 
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const end = tomorrow.toISOString();
+  const startDate = new Date(`${yyyy}-${mm}-${dd}T00:00:00+09:00`);
+  const endDate = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
 
   return togglFetch<TogglTimeEntry[]>(
-    `/me/time_entries?start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`
+    `/me/time_entries?start_date=${encodeURIComponent(startDate.toISOString())}&end_date=${encodeURIComponent(endDate.toISOString())}`
   );
 };
 
@@ -115,7 +118,9 @@ export const summarizeByProject = async (
  */
 export const formatTime = (isoString: string): string => {
   const date = new Date(isoString);
-  return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
+  // JST (UTC+9) で表示する
+  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return `${jst.getUTCHours().toString().padStart(2, "0")}:${jst.getUTCMinutes().toString().padStart(2, "0")}`;
 };
 
 /**

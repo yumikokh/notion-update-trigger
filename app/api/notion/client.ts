@@ -42,8 +42,9 @@ export const getTodayTasks = async (): Promise<PageObjectResponse[]> => {
     throw new Error("NOTION_TASK_DATABASE_ID is not defined");
   }
 
-  // 今日の日付を取得（YYYY-MM-DD形式）
-  const today = new Date().toISOString().split("T")[0];
+  // 今日の日付をJST (UTC+9) で取得（YYYY-MM-DD形式）
+  const nowJst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const today = nowJst.toISOString().split("T")[0];
 
   const response = await notion.databases.query({
     database_id: process.env.NOTION_TASK_DATABASE_ID,

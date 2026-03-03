@@ -7,9 +7,10 @@ const notion = new Client({
 });
 
 /**
- * 最新のジャーナルページを取得する
+ * ジャーナルページを取得する
+ * @param date YYYY-MM-DD形式の日付文字列。未指定時は最新のページを返す
  */
-export const getLatestJournalPage = async (): Promise<PageObjectResponse> => {
+export const getJournalPage = async (date?: string): Promise<PageObjectResponse> => {
   if (!process.env.NOTION_JOURNAL_DATABASE_ID) {
     throw new Error("NOTION_JOURNAL_DATABASE_ID is not defined");
   }
@@ -17,21 +18,34 @@ export const getLatestJournalPage = async (): Promise<PageObjectResponse> => {
   const response = await notion.databases.query({
     database_id: process.env.NOTION_JOURNAL_DATABASE_ID,
     page_size: 1,
-    sorts: [
-      {
-        property: "Date",
-        direction: "descending",
-      },
-    ],
+    ...(date
+      ? {
+          filter: {
+            property: "Date",
+            date: { equals: date },
+          },
+        }
+      : {
+          sorts: [
+            {
+              property: "Date",
+              direction: "descending" as const,
+            },
+          ],
+        }),
   });
 
-  const [latestPage] = response.results;
+  const [page] = response.results;
 
-  if (!latestPage || latestPage.object !== "page") {
-    throw new Error("Latest item in journal database is not a page");
+  if (!page || page.object !== "page") {
+    throw new Error(
+      date
+        ? `Journal page not found for date: ${date}`
+        : "Latest item in journal database is not a page"
+    );
   }
 
-  return latestPage as PageObjectResponse;
+  return page as PageObjectResponse;
 };
 
 /**
@@ -126,133 +140,67 @@ export type Input = {
   };
 };
 
-import { ProjectSummary, formatDuration, formatTime } from "../toggl/client";
-
 /**
- * プロジェクト名からNotionのProjectページを検索する
+ * ジャーナルページのSleepプロパティを更新する
  */
-const findProjectPages = async (
-  projectNames: string[]
-): Promise<Map<string, string>> => {
-  if (!process.env.NOTION_PROJECT_DATABASE_ID) {
-    return new Map();
-  }
-
-  const result = new Map<string, string>();
-
-  await Promise.all(
-    projectNames.map(async (name) => {
-      if (name === "No Project" || name === "Unknown") return;
-      try {
-        const response = await notion.databases.query({
-          database_id: process.env.NOTION_PROJECT_DATABASE_ID!,
-          filter: {
-            property: "Project Name",
-            title: { equals: name },
+export const updateJournalSleep = async (
+  pageId: string,
+  opts: { bedTime: string; wakeTime: string; sleepHours: number }
+) => {
+  return notion.pages.update({
+    page_id: pageId,
+    properties: {
+      "Bed time": {
+        rich_text: [
+          {
+            type: "text",
+            text: { content: `🛌 ${opts.bedTime} 🛌 ${opts.wakeTime}` },
           },
-          page_size: 1,
-        });
-        if (response.results.length > 0) {
-          result.set(name, response.results[0].id);
-        }
-      } catch {
-        // ignore
-      }
-    })
-  );
-
-  return result;
+        ],
+      },
+      Sleep: {
+        number: opts.sleepHours,
+      },
+    },
+  });
 };
 
+import { ProjectSummary, formatDuration } from "../toggl/client";
+
 /**
- * Togglサマリーをページに追記する
+ * TogglサマリーをジャーナルページのTrackedプロパティに設定する
  */
-export const appendTogglSummaryToPage = async (
+export const updateJournalTracked = async (
   pageId: string,
   summaries: ProjectSummary[]
 ) => {
-  const totalSeconds = summaries.reduce((sum, s) => sum + s.totalSeconds, 0);
-
-  // プロジェクト名からNotionページを検索
-  const projectPageMap = await findProjectPages(
-    summaries.map((s) => s.projectName)
-  );
-
-  // 全体の開始・終了時間を算出
-  const allEntries = summaries.flatMap((s) => s.entries);
-  const starts = allEntries.map((e) => new Date(e.start).getTime());
-  const stops = allEntries.filter((e) => e.stop).map((e) => new Date(e.stop!).getTime());
-  const overallStart = starts.length > 0 ? formatTime(new Date(Math.min(...starts)).toISOString()) : "";
-  const overallEnd = stops.length > 0 ? formatTime(new Date(Math.max(...stops)).toISOString()) : "";
-  const timeRange = overallStart && overallEnd ? ` ${overallStart}-${overallEnd}` : "";
-
-  // テーブル行を作成
-  const headerRow = {
-    object: "block",
-    type: "table_row",
-    table_row: {
-      cells: [
-        [{ type: "text", text: { content: "Project" } }],
-        [{ type: "text", text: { content: "Time" } }],
-        [{ type: "text", text: { content: "Details" } }],
-      ],
-    },
-  };
-
-  const dataRows = summaries.map((summary) => {
-    const notionPageId = projectPageMap.get(summary.projectName);
-    const projectCell: any[] = notionPageId
-      ? [{ type: "mention", mention: { type: "page", page: { id: notionPageId } } }]
-      : [{ type: "text", text: { content: summary.projectName } }];
-
+  const lines: string[] = [];
+  for (const summary of summaries) {
     // 同じdescriptionのエントリをマージ
     const mergedEntries = new Map<string, number>();
     for (const entry of summary.entries) {
       const key = entry.description;
       mergedEntries.set(key, (mergedEntries.get(key) ?? 0) + entry.seconds);
     }
-    const details = Array.from(mergedEntries.entries())
-      .map(([desc, secs]) => `• ${desc} (${formatDuration(secs)})`)
-      .join("\n");
+    for (const [desc, secs] of Array.from(mergedEntries.entries())) {
+      lines.push(`・${summary.projectName}: ${desc} (${formatDuration(secs)})`);
+    }
+  }
 
-    return {
-      object: "block",
-      type: "table_row",
-      table_row: {
-        cells: [
-          projectCell,
-          [{ type: "text", text: { content: formatDuration(summary.totalSeconds) } }],
-          [{ type: "text", text: { content: details } }],
-        ],
-      },
-    };
-  });
+  const trackedText = lines.join("\n");
 
-  const children: any[] = [
-    {
-      object: "block",
-      type: "heading_3",
-      heading_3: {
+  return notion.pages.update({
+    page_id: pageId,
+    properties: {
+      Tracked: {
         rich_text: [
-          { type: "text", text: { content: `⏱ Toggl (${formatDuration(totalSeconds)})${timeRange}` } },
+          {
+            type: "text",
+            text: { content: trackedText },
+          },
         ],
       },
     },
-    {
-      object: "block",
-      type: "table",
-      table: {
-        table_width: 3,
-        has_column_header: true,
-        has_row_header: false,
-        children: [headerRow, ...dataRows],
-      },
-    },
-  ];
-
-  return notion.blocks.children.append({
-    block_id: pageId,
-    children,
   });
 };
 

@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import {
-  getLatestJournalPage,
+  getJournalPage,
   getTodayTasks,
   updateJournalTasks,
 } from "../client";
@@ -11,7 +11,7 @@ import {
 export async function POST(_request: NextRequest) {
   try {
     // 最新のジャーナルページを取得
-    const latestJournal = await getLatestJournalPage();
+    const latestJournal = await getJournalPage();
 
     // 今日の日付のタスクを取得
     const todayTasks = await getTodayTasks();

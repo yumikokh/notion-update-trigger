@@ -43,18 +43,23 @@ export type ProjectSummary = {
 };
 
 /**
- * 当日のタイムエントリを取得する
+ * 指定日のタイムエントリを取得する（デフォルトは本日JST）
+ * @param date YYYY-MM-DD形式の日付文字列（JST）
  */
-export const getTodayTimeEntries = async (): Promise<TogglTimeEntry[]> => {
-  // JST (UTC+9) で「今日」を計算する
-  const nowUtc = new Date();
-  const jstOffset = 9 * 60 * 60 * 1000;
-  const nowJst = new Date(nowUtc.getTime() + jstOffset);
-  const yyyy = nowJst.getUTCFullYear();
-  const mm = String(nowJst.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(nowJst.getUTCDate()).padStart(2, "0");
+export const getTimeEntries = async (date?: string): Promise<TogglTimeEntry[]> => {
+  let dateStr: string;
+  if (date) {
+    dateStr = date;
+  } else {
+    const jstOffset = 9 * 60 * 60 * 1000;
+    const nowJst = new Date(Date.now() + jstOffset);
+    const yyyy = nowJst.getUTCFullYear();
+    const mm = String(nowJst.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(nowJst.getUTCDate()).padStart(2, "0");
+    dateStr = `${yyyy}-${mm}-${dd}`;
+  }
 
-  const startDate = new Date(`${yyyy}-${mm}-${dd}T00:00:00+09:00`);
+  const startDate = new Date(`${dateStr}T00:00:00+09:00`);
   const endDate = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
 
   return togglFetch<TogglTimeEntry[]>(

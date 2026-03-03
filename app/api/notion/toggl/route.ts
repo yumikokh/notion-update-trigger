@@ -2,20 +2,23 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
-import { getLatestJournalPage, appendTogglSummaryToPage } from "../client";
+import { getJournalPage, updateJournalTracked } from "../client";
 import {
-  getTodayTimeEntries,
+  getTimeEntries,
   summarizeByProject,
   formatDuration,
 } from "../../toggl/client";
 
-export async function POST(_request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const entries = await getTodayTimeEntries();
+    const { searchParams } = new URL(request.url);
+    const date = searchParams.get("date") ?? undefined; // YYYY-MM-DD (JST), default: today
+
+    const entries = await getTimeEntries(date);
     const summaries = await summarizeByProject(entries);
 
-    const latestJournal = await getLatestJournalPage();
-    await appendTogglSummaryToPage(latestJournal.id, summaries);
+    const journal = await getJournalPage(date);
+    await updateJournalTracked(journal.id, summaries);
 
     const totalSeconds = summaries.reduce((sum, s) => sum + s.totalSeconds, 0);
 
@@ -23,8 +26,8 @@ export async function POST(_request: NextRequest) {
       JSON.stringify({
         status: "success",
         result: {
-          journalId: latestJournal.id,
-          journalUrl: latestJournal.url,
+          journalId: journal.id,
+          journalUrl: journal.url,
           entriesCount: entries.length,
           totalTime: formatDuration(totalSeconds),
           projects: summaries.map((s) => ({

@@ -143,23 +143,17 @@ export type Input = {
 /**
  * ジャーナルページのSleepプロパティを更新する
  */
-export const updateJournalSleep = async (
-  pageId: string,
-  opts: { bedTime: string; wakeTime: string; sleepHours: number }
-) => {
+export const updateJournalSleep = async (pageId: string, text: string) => {
   return notion.pages.update({
     page_id: pageId,
     properties: {
-      "Bed time": {
+      Sleep: {
         rich_text: [
           {
             type: "text",
-            text: { content: `🛌 ${opts.bedTime} 🛌 ${opts.wakeTime}` },
+            text: { content: text },
           },
         ],
-      },
-      Sleep: {
-        number: opts.sleepHours,
       },
     },
   });

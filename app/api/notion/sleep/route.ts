@@ -9,34 +9,17 @@ export async function POST(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const date = searchParams.get("date") ?? undefined;
 
-    const { bedTime, wakeTime, sleepHours } = (await request.json()) as {
-      bedTime: string; // "2:41"
-      wakeTime: string; // "11:25"
-      sleepHours: number; // 8.02
-    };
+    const { text } = (await request.json()) as { text: string };
 
-    if (!bedTime || !wakeTime || sleepHours == null) {
+    if (!text) {
       return new Response(
-        JSON.stringify({
-          status: "error",
-          message: "bedTime, wakeTime, sleepHours are required",
-        }),
+        JSON.stringify({ status: "error", message: "text is required" }),
         { status: 400 }
       );
     }
 
-    const MIN_SLEEP_HOURS = 1;
-    if (sleepHours < MIN_SLEEP_HOURS) {
-      return new Response(
-        JSON.stringify({
-          status: "skipped",
-          message: `Sleep duration too short (${sleepHours}h), likely a measurement error`,
-        })
-      );
-    }
-
     const journal = await getJournalPage(date);
-    await updateJournalSleep(journal.id, { bedTime, wakeTime, sleepHours });
+    await updateJournalSleep(journal.id, text);
 
     return new Response(
       JSON.stringify({
@@ -44,9 +27,7 @@ export async function POST(request: NextRequest) {
         result: {
           journalId: journal.id,
           journalUrl: journal.url,
-          bedTime,
-          wakeTime,
-          sleepHours,
+          text,
         },
       })
     );

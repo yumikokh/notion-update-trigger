@@ -130,6 +130,14 @@ export const updateJournalTasks = async (
   return response;
 };
 
+export type SlackMessage = {
+  ts: string;
+  text: string;
+  thread_ts?: string;
+  reply_count?: number | null;
+  parent_user_id?: string | null;
+};
+
 export type Input = {
   text?: string;
   embed?: string;
@@ -138,6 +146,7 @@ export type Input = {
     url: string;
     caption?: string;
   };
+  messages?: SlackMessage[];
 };
 
 /**
@@ -198,50 +207,110 @@ export const updateJournalTracked = async (
   });
 };
 
-export const appendTextToPage = async (pageId: string, opts: Input) => {
-  const rich_text: {
-    type: "text";
-    text: { content: string; link: { url: string } } | { content: string };
+type RichTextItem = {
+  type: "text";
+  text: { content: string; link: { url: string } } | { content: string };
+};
+
+/**
+ * テキストをemoji変換 + URL抽出・リンク化してrich_text配列に変換する
+ */
+export const buildRichText = (input: string): RichTextItem[] => {
+  const rich_text: RichTextItem[] = [];
+
+  // emojiを変換
+  const emojiRegex = /:([a-z0-9_+]+):/g;
+  const textWithEmoji = input.replace(emojiRegex, (match, p1) => {
+    const emojiData = emoji.find((e) => e.short_name === p1);
+    if (emojiData) {
+      return String.fromCodePoint(parseInt(emojiData.unified, 16));
+    }
+    return match;
+  });
+
+  // url部分（複数可）だけ取り出す
+  const urls = textWithEmoji.match(/https?:\/\/\S+/g) || [];
+  // url部分をダミーリンクに変換
+  const text = textWithEmoji.replace(/https?:\/\/\S+/g, "<URL>");
+  const link = urls.map((url) => ({
+    type: "text" as const,
+    text: {
+      content: url,
+      link: { url },
+    },
+  }));
+  // テキストとリンクを結合
+  const texts = text.split("<URL>");
+  texts.forEach((text, index) => {
+    rich_text.push({
+      type: "text" as const,
+      text: { content: text },
+    });
+    if (link[index]) {
+      rich_text.push(link[index]);
+    }
+  });
+
+  return rich_text;
+};
+
+/**
+ * SlackメッセージをNotionの箇条書きブロック配列に変換する
+ * スレッドの返信は親メッセージのchildrenとしてネストする
+ */
+export const buildMessageBlocks = (messages: SlackMessage[]) => {
+  // thread_tsでグループ化
+  const groups = new Map<string, SlackMessage[]>();
+  for (const msg of messages) {
+    const key = msg.thread_ts || msg.ts;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key)!.push(msg);
+  }
+
+  const blocks: {
+    object: "block";
+    type: "bulleted_list_item";
+    bulleted_list_item: {
+      rich_text: RichTextItem[];
+      children?: { type: "bulleted_list_item"; bulleted_list_item: { rich_text: RichTextItem[] } }[];
+    };
   }[] = [];
+
+  for (const [, group] of Array.from(groups.entries())) {
+    // 親メッセージ（parent_user_idがnull/undefined）を見つける
+    const parent = group.find((m: SlackMessage) => !m.parent_user_id);
+    const replies = group.filter((m: SlackMessage) => m.parent_user_id);
+
+    if (!parent) continue;
+
+    const children = replies.map((reply: SlackMessage) => ({
+      type: "bulleted_list_item" as const,
+      bulleted_list_item: {
+        rich_text: buildRichText(reply.text),
+      },
+    }));
+
+    blocks.push({
+      object: "block",
+      type: "bulleted_list_item",
+      bulleted_list_item: {
+        rich_text: buildRichText(parent.text),
+        ...(children.length > 0 ? { children } : {}),
+      },
+    });
+  }
+
+  return blocks;
+};
+
+export const appendTextToPage = async (pageId: string, opts: Input) => {
+  const rich_text: RichTextItem[] = [];
   const children = [];
 
   if (opts.text) {
-    // emojiを変換
-    const emojiRegex = /:([a-z0-9_+]+):/g;
-    const textWithEmoji = opts.text.replace(emojiRegex, (match, p1) => {
-      const emojiData = emoji.find((e) => e.short_name === p1);
-      if (emojiData) {
-        return String.fromCodePoint(parseInt(emojiData.unified, 16));
-      }
-      return match; // 見つからない場合は :emoji: のまま返す
-    });
-
-    // url部分（複数可）だけ取り出す
-    const urls = textWithEmoji.match(/https?:\/\/\S+/g) || [];
-    // url部分をダミーリンクに変換
-    const text = textWithEmoji.replace(/https?:\/\/\S+/g, "<URL>");
-    const link = urls.map((url) => ({
-      type: "text" as const,
-      text: {
-        content: url,
-        link: {
-          url,
-        },
-      },
-    }));
-    // テキストとリンクを結合
-    const texts = text.split("<URL>");
-    texts.forEach((text, index) => {
-      rich_text.push({
-        type: "text" as const,
-        text: {
-          content: text,
-        },
-      });
-      if (link[index]) {
-        rich_text.push(link[index]);
-      }
-    });
+    rich_text.push(...buildRichText(opts.text));
   }
 
   if (opts.bookmark) {
@@ -279,6 +348,17 @@ export const appendTextToPage = async (pageId: string, opts: Input) => {
       },
     } as const);
   }
+
+  // messages処理: Slackメッセージがある場合は箇条書きブロックとして追加
+  if (opts.messages && opts.messages.length > 0) {
+    const messageBlocks = buildMessageBlocks(opts.messages);
+    const response = await notion.blocks.children.append({
+      block_id: pageId,
+      children: messageBlocks,
+    });
+    return response;
+  }
+
   const response = await notion.blocks.children.append({
     block_id: pageId,
     children: [

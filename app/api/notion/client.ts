@@ -147,6 +147,7 @@ export type Input = {
     caption?: string;
   };
   messages?: SlackMessage[];
+  from?: string;
 };
 
 /**
@@ -258,7 +259,7 @@ export const buildRichText = (input: string): RichTextItem[] => {
  * SlackメッセージをNotionの箇条書きブロック配列に変換する
  * スレッドの返信は親メッセージのchildrenとしてネストする
  */
-export const buildMessageBlocks = (messages: SlackMessage[]) => {
+export const buildMessageBlocks = (messages: SlackMessage[], from?: string) => {
   // thread_tsでグループ化
   const groups = new Map<string, SlackMessage[]>();
   for (const msg of messages) {
@@ -292,11 +293,19 @@ export const buildMessageBlocks = (messages: SlackMessage[]) => {
       },
     }));
 
+    const parentRichText = buildRichText(parent.text);
+    if (from) {
+      parentRichText.push({
+        type: "text",
+        text: { content: ` ${from}` },
+      });
+    }
+
     blocks.push({
       object: "block",
       type: "bulleted_list_item",
       bulleted_list_item: {
-        rich_text: buildRichText(parent.text),
+        rich_text: parentRichText,
         ...(children.length > 0 ? { children } : {}),
       },
     });
@@ -311,6 +320,9 @@ export const appendTextToPage = async (pageId: string, opts: Input) => {
 
   if (opts.text) {
     rich_text.push(...buildRichText(opts.text));
+    if (opts.from) {
+      rich_text.push({ type: "text", text: { content: ` ${opts.from}` } });
+    }
   }
 
   if (opts.bookmark) {
@@ -351,7 +363,7 @@ export const appendTextToPage = async (pageId: string, opts: Input) => {
 
   // messages処理: Slackメッセージがある場合は箇条書きブロックとして追加
   if (opts.messages && opts.messages.length > 0) {
-    const messageBlocks = buildMessageBlocks(opts.messages);
+    const messageBlocks = buildMessageBlocks(opts.messages, opts.from);
     const response = await notion.blocks.children.append({
       block_id: pageId,
       children: messageBlocks,

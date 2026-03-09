@@ -15,7 +15,7 @@ export async function GET(_request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const data = await request.json();
-  const { text, embed, video, bookmark, messages } = data as Input;
+  const { text, embed, video, bookmark, messages, from } = data as Input;
 
   const latestPage = await getJournalPage();
   const { id: latestPageId } = latestPage;
@@ -26,6 +26,7 @@ export async function PUT(request: NextRequest) {
     video,
     bookmark,
     messages,
+    from,
   });
   return new Response(JSON.stringify({ status: "success", result: result }));
 }

@@ -258,4 +258,52 @@ describe("buildMessageBlocks", () => {
     const blocks = buildMessageBlocks([]);
     expect(blocks).toEqual([]);
   });
+
+  it("fromを指定すると親メッセージの末尾にfromが付与される", () => {
+    const messages: SlackMessage[] = [
+      {
+        ts: "1",
+        text: "parent msg",
+        thread_ts: "1",
+        reply_count: 1,
+        parent_user_id: null,
+      },
+      {
+        ts: "2",
+        text: "reply msg",
+        thread_ts: "1",
+        parent_user_id: "U123",
+      },
+    ];
+
+    const blocks = buildMessageBlocks(messages, "#times_yumikokh");
+    const parentRichText = blocks[0].bulleted_list_item.rich_text;
+    // 最後の要素にfromが含まれる
+    const lastItem = parentRichText[parentRichText.length - 1];
+    expect((lastItem.text as { content: string }).content).toBe(
+      " #times_yumikokh"
+    );
+    // 返信にはfromが付かない
+    const replyRichText =
+      blocks[0].bulleted_list_item.children![0].bulleted_list_item.rich_text;
+    const replyTexts = replyRichText.map(
+      (item) => (item.text as { content: string }).content
+    );
+    expect(replyTexts.join("")).not.toContain("#times_yumikokh");
+  });
+
+  it("fromを指定しない場合は付与されない", () => {
+    const messages: SlackMessage[] = [
+      {
+        ts: "1",
+        text: "hello",
+        thread_ts: "1",
+        parent_user_id: null,
+      },
+    ];
+
+    const blocks = buildMessageBlocks(messages);
+    const richText = blocks[0].bulleted_list_item.rich_text;
+    expect(richText).toEqual(buildRichText("hello"));
+  });
 });

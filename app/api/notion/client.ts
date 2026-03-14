@@ -280,9 +280,12 @@ export const buildMessageBlocks = (messages: SlackMessage[], from?: string) => {
   }[] = [];
 
   for (const [, group] of Array.from(groups.entries())) {
-    // 親メッセージ（parent_user_idがnull/undefined）を見つける
-    const parent = group.find((m: SlackMessage) => !m.parent_user_id);
-    const replies = group.filter((m: SlackMessage) => m.parent_user_id);
+    // 親メッセージを見つける（ts === thread_ts、またはparent_user_idがないメッセージ）
+    const threadTs = group[0].thread_ts || group[0].ts;
+    const parent = group.find(
+      (m: SlackMessage) => m.ts === threadTs || !m.parent_user_id
+    );
+    const replies = group.filter((m: SlackMessage) => m !== parent);
 
     if (!parent) continue;
 

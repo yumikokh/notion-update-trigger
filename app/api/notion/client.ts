@@ -216,12 +216,41 @@ type RichTextItem = {
 /**
  * テキストをemoji変換 + URL抽出・リンク化してrich_text配列に変換する
  */
+// Notion APIのrich_text.content上限
+const NOTION_TEXT_LIMIT = 2000;
+
+const truncate = (s: string): string =>
+  s.length > NOTION_TEXT_LIMIT ? s.slice(0, NOTION_TEXT_LIMIT) : s;
+
+/**
+ * Slackのlink formattingを通常のテキスト/URLに正規化する
+ * - <URL>        → URL
+ * - <URL|text>   → text
+ * - <@USERID>    → @USERID
+ * - <#CID|name>  → #name
+ * - <!cmd>       → !cmd
+ */
+const normalizeSlackFormatting = (input: string): string => {
+  return input
+    .replace(/<(https?:\/\/[^|>]+)(?:\|([^>]+))?>/g, (_, url, display) =>
+      display ?? url
+    )
+    .replace(/<@([A-Z0-9]+)>/g, "@$1")
+    .replace(/<#[A-Z0-9]+\|([^>]+)>/g, "#$1")
+    .replace(/<!([^>]+)>/g, (_, body) => {
+      const piped = body.split("|");
+      return `!${piped[piped.length - 1]}`;
+    });
+};
+
 export const buildRichText = (input: string): RichTextItem[] => {
   const rich_text: RichTextItem[] = [];
 
+  const normalized = normalizeSlackFormatting(input);
+
   // emojiを変換
   const emojiRegex = /:([a-z0-9_+]+):/g;
-  const textWithEmoji = input.replace(emojiRegex, (match, p1) => {
+  const textWithEmoji = normalized.replace(emojiRegex, (match, p1) => {
     const emojiData = emoji.find((e) => e.short_name === p1);
     if (emojiData) {
       return String.fromCodePoint(parseInt(emojiData.unified, 16));
@@ -236,21 +265,28 @@ export const buildRichText = (input: string): RichTextItem[] => {
   const link = urls.map((url) => ({
     type: "text" as const,
     text: {
-      content: url,
-      link: { url },
+      content: truncate(url),
+      link: { url: truncate(url) },
     },
   }));
   // テキストとリンクを結合
   const texts = text.split("<URL>");
   texts.forEach((text, index) => {
-    rich_text.push({
-      type: "text" as const,
-      text: { content: text },
-    });
+    if (text.length > 0) {
+      rich_text.push({
+        type: "text" as const,
+        text: { content: truncate(text) },
+      });
+    }
     if (link[index]) {
       rich_text.push(link[index]);
     }
   });
+
+  // 全てが空になるケース（理論上ほぼないが保険）
+  if (rich_text.length === 0) {
+    rich_text.push({ type: "text", text: { content: "" } });
+  }
 
   return rich_text;
 };

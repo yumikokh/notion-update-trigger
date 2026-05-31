@@ -77,6 +77,73 @@ describe("buildRichText", () => {
       { type: "text", text: { content: "" } },
     ]);
   });
+
+  it("Slackのリンク表記 <URL> を素のURLとして扱う", () => {
+    const result = buildRichText("check <https://example.com> please");
+    const linkItem = result.find((item) => "link" in item.text);
+    expect(linkItem).toEqual({
+      type: "text",
+      text: {
+        content: "https://example.com",
+        link: { url: "https://example.com" },
+      },
+    });
+    // 不正なURL（>付き）をlinkに入れないこと
+    const linkUrls = result
+      .filter((item) => "link" in item.text)
+      .map((item) => (item.text as { link: { url: string } }).link.url);
+    linkUrls.forEach((url) => {
+      expect(url).not.toContain(">");
+      expect(url).not.toContain("|");
+    });
+  });
+
+  it("Slackのリンク表記 <URL|表示テキスト> を表示テキストに置換する", () => {
+    const result = buildRichText(
+      "see <https://acme.inc.co.jp|Acme Inc> for details"
+    );
+    const joined = result
+      .map((item) => (item.text as { content: string }).content)
+      .join("");
+    expect(joined).toContain("Acme Inc");
+    expect(joined).not.toContain("<");
+    expect(joined).not.toContain("|");
+    expect(joined).not.toContain(">");
+    // URL自体は本文に残らず、linkも生成されない
+    expect(result.find((item) => "link" in item.text)).toBeUndefined();
+  });
+
+  it("Slackのメンション <@USERID> をangle bracketsなしに正規化する", () => {
+    const result = buildRichText("hello <@U02AY0PUSJC>");
+    const joined = result
+      .map((item) => (item.text as { content: string }).content)
+      .join("");
+    expect(joined).toBe("hello @U02AY0PUSJC");
+  });
+
+  it("Slackのチャンネルメンション <#CID|name> を #name に正規化する", () => {
+    const result = buildRichText("see <#C12345|general>");
+    const joined = result
+      .map((item) => (item.text as { content: string }).content)
+      .join("");
+    expect(joined).toBe("see #general");
+  });
+
+  it("2000文字を超えるテキストは2000文字でtruncateされる", () => {
+    const longText = "a".repeat(3000);
+    const result = buildRichText(longText);
+    const totalLen = result
+      .map((item) => (item.text as { content: string }).content.length)
+      .reduce((sum, len) => sum + len, 0);
+    expect(totalLen).toBeLessThanOrEqual(2000);
+  });
+
+  it("URL末尾の空テキストを生成しない", () => {
+    const result = buildRichText("see https://example.com");
+    // 最後の要素がlink、空contentのテキストが末尾にぶら下がっていない
+    const last = result[result.length - 1];
+    expect("link" in last.text).toBe(true);
+  });
 });
 
 describe("buildMessageBlocks", () => {
